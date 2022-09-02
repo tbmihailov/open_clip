@@ -1,4 +1,5 @@
 import ast
+import glob
 import json
 import logging
 import math
@@ -76,9 +77,24 @@ def preprocess_txt(text):
     return tokenize([str(text)])[0]
 
 
+def expand_urls_enhanced(shards_pattern):
+    shards_list = []
+    if isinstance(shards_pattern, list):
+        shards_list = shards_pattern
+    elif isinstance(shards_pattern, str) and "*" in shards_pattern:
+        # data/cc12m/cc12m-train-*.tar
+        shards_list = glob.glob(shards_pattern)
+    else:
+        # "data/cc12m/cc12m-train-{0000..2175}.tar"
+        shards_list = wds.shardlists.expand_urls(shards_pattern)
+    
+    return shards_list
+
+
 def get_dataset_size(shards):
-    shards_list = list(braceexpand.braceexpand(shards))
-    dir_path = os.path.dirname(shards)
+    shards_list = expand_urls_enhanced(shards)
+
+    dir_path = os.path.dirname(shards[0])
     sizes_filename = os.path.join(dir_path, 'sizes.json')
     len_filename = os.path.join(dir_path, '__len__')
     if os.path.exists(sizes_filename):
@@ -262,7 +278,7 @@ class ResampledShards2(IterableDataset):
         :param urls: a list of URLs as a Python list or brace notation string
         """
         super().__init__()
-        urls = wds.shardlists.expand_urls(urls)
+        urls = expand_urls_enhanced(urls)
         self.urls = urls
         assert isinstance(self.urls[0], str)
         self.nshards = nshards
@@ -290,6 +306,7 @@ class ResampledShards2(IterableDataset):
 def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False):
     input_shards = args.train_data if is_train else args.val_data
     assert input_shards is not None
+    input_shards = expand_urls_enhanced(input_shards)
     resampled = getattr(args, 'dataset_resampled', False) and is_train
 
     num_samples, num_shards = get_dataset_size(input_shards)
